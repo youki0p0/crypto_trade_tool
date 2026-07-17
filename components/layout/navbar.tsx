@@ -10,6 +10,7 @@ const NAV = [
   { href: "/dashboard", label: "ダッシュボード" },
   { href: "/trade", label: "デモトレード" },
   { href: "/tax-simulator", label: "税シミュ" },
+  { href: "/models", label: "AIモデル" },
   { href: "/insights", label: "市場観" },
   { href: "/history", label: "履歴" },
   { href: "/settings", label: "設定" },
