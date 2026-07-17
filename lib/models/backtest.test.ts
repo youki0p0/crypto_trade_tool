@@ -78,3 +78,36 @@ describe("MODELS — 5モデルが動く", () => {
     expect(r.totalReturnPct).toBeGreaterThan(0);
   });
 });
+
+describe("期待値・ペイオフ比・設計R:R", () => {
+  it("勝ちと負けから期待値/ペイオフ比が正しく出る", () => {
+    // i0でロング、i2でexit(+), i3でロング, i5でexit(-)
+    const testModel: ModelDef = {
+      id: "e", name: "e", tagline: "", method: "", hedge: "", expectedReturn: "",
+      risk: "mid", kind: "single",
+      params: { leverage: 1, positionPct: 1, stopLossPct: 0.05, takeProfitPct: 0.15, allowShort: false },
+      prepare: () => ({}),
+      decide: (i, _c, _ind, side) => {
+        if ((i === 0 || i === 3) && side === null) return "enter_long";
+        if ((i === 2 || i === 5) && side === "long") return "exit";
+        return "hold";
+      },
+    };
+    // 価格: 100,100,110(+10%勝ち), 100,100,96(-4%負け) ※stop(95)/tp(115)に触れない値
+    const candles = [100, 100, 110, 100, 100, 96].map((p, i) => ({
+      time: i, open: p, high: p, low: p, close: p, volume: 1,
+    }));
+    const r = runBacktest(testModel, candles, 10000);
+    expect(r.numTrades).toBe(2);
+    expect(r.winRate).toBe(0.5);
+    // 1回目: equity1万→qty100, +10% = +1000 (equity→1.1万)
+    // 2回目: equity1.1万→qty110, -4% = -440
+    // avgWin=1000, avgLoss=440, payoff=1000/440≈2.273, 期待値=(1000-440)/2=280
+    expect(r.avgWin).toBeCloseTo(1000, 4);
+    expect(r.avgLoss).toBeCloseTo(440, 4);
+    expect(r.payoffRatio).toBeCloseTo(1000 / 440, 4);
+    expect(r.expectancy).toBeCloseTo(280, 4);
+    // 設計R:R = 0.15/0.05 = 3
+    expect(r.plannedRR).toBeCloseTo(3, 6);
+  });
+});

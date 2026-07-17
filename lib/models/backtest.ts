@@ -32,6 +32,16 @@ export interface BacktestMetrics {
   profitFactor: number;
   /** 原資産をただ買い持ちした場合のリターン（比較用ベンチマーク） */
   buyHoldReturnPct: number;
+  /** 勝ちトレードの平均利益（USDT） */
+  avgWin: number;
+  /** 負けトレードの平均損失（USDT・正の値） */
+  avgLoss: number;
+  /** 1トレードあたりの期待値（平均損益, USDT）= Σpnl / 取引数。正なら優位 */
+  expectancy: number;
+  /** ペイオフ比 = 平均利益 / 平均損失（実現ベース）。>1で勝ちが負けより大きい */
+  payoffRatio: number;
+  /** 設計上のリスクリワード = 利確幅 / 損切り幅（モデル設定値）。未設定は null */
+  plannedRR: number | null;
 }
 
 export interface BacktestResult extends BacktestMetrics {
@@ -67,13 +77,22 @@ function finalize(
   equity: number,
   curve: EquityPoint[],
   trades: BacktestTrade[],
-  candles: Candle[]
+  candles: Candle[],
+  plannedRR: number | null
 ): BacktestResult {
   const wins = trades.filter((t) => t.pnl > 0);
+  const losses = trades.filter((t) => t.pnl < 0);
   const grossProfit = wins.reduce((s, t) => s + t.pnl, 0);
-  const grossLoss = trades.filter((t) => t.pnl < 0).reduce((s, t) => s - t.pnl, 0);
+  const grossLoss = losses.reduce((s, t) => s - t.pnl, 0); // 正の値
   const first = candles[0]?.close ?? 0;
   const last = candles[candles.length - 1]?.close ?? 0;
+
+  const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
+  const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
+  const totalPnl = grossProfit - grossLoss;
+  const expectancy = trades.length > 0 ? totalPnl / trades.length : 0;
+  const payoffRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? Infinity : 0;
+
   return {
     modelId,
     initialCapital,
@@ -84,9 +103,23 @@ function finalize(
     numTrades: trades.length,
     profitFactor: grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0,
     buyHoldReturnPct: first > 0 ? (last - first) / first : 0,
+    avgWin,
+    avgLoss,
+    expectancy,
+    payoffRatio,
+    plannedRR,
     equityCurve: curve,
     trades,
   };
+}
+
+/** 設計上のリスクリワード（利確幅/損切り幅）。両方設定されている単一戦略のみ */
+function plannedRiskReward(model: ModelDef): number | null {
+  const { takeProfitPct, stopLossPct } = model.params;
+  if (takeProfitPct != null && stopLossPct != null && stopLossPct > 0) {
+    return takeProfitPct / stopLossPct;
+  }
+  return null;
 }
 
 export function runBacktest(
@@ -196,7 +229,7 @@ export function runBacktest(
     curve[curve.length - 1] = { time: lc.time, equity };
   }
 
-  return finalize(model.id, initialCapital, equity, curve, trades, candles);
+  return finalize(model.id, initialCapital, equity, curve, trades, candles, plannedRiskReward(model));
 }
 
 /**
@@ -246,5 +279,6 @@ function runDca(model: ModelDef, candles: Candle[], initialCapital: number): Bac
     });
   }
 
-  return finalize(model.id, initialCapital, finalEquity, curve, trades, candles);
+  // DCAは損切り/利確を持たないため設計R:Rは null
+  return finalize(model.id, initialCapital, finalEquity, curve, trades, candles, plannedRiskReward(model));
 }

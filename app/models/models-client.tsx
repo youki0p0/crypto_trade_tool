@@ -8,7 +8,7 @@ import { RISK_LABEL } from "@/lib/models/types";
 import type { Candle } from "@/lib/models/types";
 import { TRADABLE_SYMBOLS, SYMBOL_LABELS } from "@/lib/trade/schema";
 import { KLINE_INTERVALS, type KlineInterval } from "@/lib/market/klines";
-import { formatPercent, formatUSDT, cn } from "@/lib/utils";
+import { formatPercent, formatUSDT, formatNumber, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -224,6 +224,9 @@ export function ModelsClient() {
                     <TableHead className="text-right">リターン</TableHead>
                     <TableHead className="text-right">最大DD</TableHead>
                     <TableHead className="text-right">勝率</TableHead>
+                    <TableHead className="text-right" title="平均利益 ÷ 平均損失（実現）">ペイオフ比</TableHead>
+                    <TableHead className="text-right" title="1取引あたりの平均損益。正なら優位">期待値/取引</TableHead>
+                    <TableHead className="text-right" title="設計上の利確幅 ÷ 損切り幅">R:R(設計)</TableHead>
                     <TableHead className="text-right">取引数</TableHead>
                     <TableHead className="text-right">最終資産</TableHead>
                   </TableRow>
@@ -261,6 +264,31 @@ export function ModelsClient() {
                         <TableCell className="text-right tabular-nums">
                           {formatPercent(r.winRate)}
                         </TableCell>
+                        <TableCell
+                          className={cn(
+                            "text-right tabular-nums",
+                            r.payoffRatio >= 1 ? "text-[hsl(var(--profit))]" : "text-[hsl(var(--loss))]"
+                          )}
+                        >
+                          {r.numTrades === 0
+                            ? "—"
+                            : r.payoffRatio === Infinity
+                              ? "∞"
+                              : `${r.payoffRatio.toFixed(2)}`}
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            "text-right font-medium tabular-nums",
+                            r.expectancy >= 0 ? "text-[hsl(var(--profit))]" : "text-[hsl(var(--loss))]"
+                          )}
+                        >
+                          {r.numTrades === 0
+                            ? "—"
+                            : `${r.expectancy >= 0 ? "+" : ""}${formatNumber(r.expectancy)}`}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {r.plannedRR == null ? "—" : `${r.plannedRR.toFixed(1)}:1`}
+                        </TableCell>
                         <TableCell className="text-right tabular-nums">{r.numTrades}</TableCell>
                         <TableCell className="text-right tabular-nums">
                           {formatUSDT(r.finalEquity)}
@@ -282,10 +310,14 @@ export function ModelsClient() {
                       {(run.results[0]?.buyHoldReturnPct ?? 0) >= 0 ? "+" : ""}
                       {formatPercent(run.results[0]?.buyHoldReturnPct ?? 0)}
                     </TableCell>
-                    <TableCell colSpan={4} />
+                    <TableCell colSpan={7} />
                   </TableRow>
                 </TableBody>
               </Table>
+              <p className="mt-3 text-xs text-muted-foreground">
+                ※ <b>勝率が高くても期待値がマイナスなら負け</b>。1トレードの平均損益（期待値/取引）とペイオフ比（平均利益÷平均損失）が本質です。
+                高勝率×低ペイオフ（たまの大負けで飛ぶ型）と、低勝率×高ペイオフ（トレンド追随型）を見比べてください。「R:R(設計)」は戦略が狙う非対称性、ペイオフ比は実際に得られた非対称性です。
+              </p>
             </CardContent>
           </Card>
         </>
