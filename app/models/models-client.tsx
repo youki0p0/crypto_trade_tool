@@ -28,7 +28,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ModelsEquityChart } from "@/components/charts/models-equity-chart";
-import { Loader2, Play, TrendingUp, ShieldCheck, AlertTriangle } from "lucide-react";
+import type { ModelAdvice } from "@/lib/models/llm";
+import { Loader2, Play, TrendingUp, ShieldCheck, AlertTriangle, Sparkles } from "lucide-react";
+
+const SIGNAL_LABEL: Record<string, { text: string; variant: "profit" | "loss" | "secondary" }> = {
+  long: { text: "買い", variant: "profit" },
+  short: { text: "売り", variant: "loss" },
+  neutral: { text: "様子見", variant: "secondary" },
+};
 
 const INTERVAL_LABELS: Record<KlineInterval, string> = {
   "1h": "1時間足",
@@ -51,6 +58,33 @@ export function ModelsClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [run, setRun] = useState<RunState | null>(null);
+
+  // AI（Claude）の見立て
+  const [advice, setAdvice] = useState<Record<string, ModelAdvice> | null>(null);
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const [adviceError, setAdviceError] = useState<string | null>(null);
+
+  const fetchAdvice = useCallback(async () => {
+    setAdviceLoading(true);
+    setAdviceError(null);
+    try {
+      const res = await fetch("/api/models/advice", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ symbol, interval }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "取得に失敗しました");
+      const map: Record<string, ModelAdvice> = {};
+      for (const r of json.reads as ModelAdvice[]) map[r.modelId] = r;
+      setAdvice(map);
+    } catch (e) {
+      setAdviceError(e instanceof Error ? e.message : "取得に失敗しました");
+      setAdvice(null);
+    } finally {
+      setAdviceLoading(false);
+    }
+  }, [symbol, interval]);
 
   const execute = useCallback(async () => {
     setLoading(true);
@@ -137,8 +171,19 @@ export function ModelsClient() {
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             バックテスト実行
           </Button>
+          <Button onClick={fetchAdvice} disabled={adviceLoading} variant="outline" className="gap-2">
+            {adviceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            AIの見立て
+          </Button>
         </CardContent>
       </Card>
+
+      {adviceError && (
+        <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {adviceError}
+        </div>
+      )}
 
       {error && (
         <div className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
@@ -280,6 +325,21 @@ export function ModelsClient() {
                     </span>
                     <span>最大DD <b className="text-[hsl(var(--loss))]">-{formatPercent(r.maxDrawdownPct)}</b></span>
                     <span>勝率 <b>{formatPercent(r.winRate)}</b></span>
+                  </div>
+                )}
+                {advice?.[m.id] && (
+                  <div className="mt-2 space-y-1 rounded-md bg-muted/60 p-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                      <span className="font-medium">AIの見立て</span>
+                      <Badge variant={SIGNAL_LABEL[advice[m.id].signal]?.variant ?? "secondary"}>
+                        {SIGNAL_LABEL[advice[m.id].signal]?.text ?? advice[m.id].signal}
+                      </Badge>
+                      <span className="text-muted-foreground">
+                        確信度 {Math.round(advice[m.id].confidence * 100)}%
+                      </span>
+                    </div>
+                    <p className="text-muted-foreground">{advice[m.id].rationale}</p>
                   </div>
                 )}
               </CardContent>
