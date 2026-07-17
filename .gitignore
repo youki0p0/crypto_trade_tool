@@ -1,0 +1,18 @@
+# OS / editor
+.DS_Store
+*.swp
+
+# Logs
+*.log
+
+# Dependencies / build
+node_modules/
+dist/
+build/
+__pycache__/
+*.pyc
+
+# Env / secrets
+.env
+.env.*
+!.env.example
