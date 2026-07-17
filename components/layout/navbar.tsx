@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { LineChart } from "lucide-react";
+import { AuthButton } from "./auth-button";
 
 const NAV = [
   { href: "/dashboard", label: "ダッシュボード" },
@@ -44,6 +45,9 @@ export function Navbar() {
             );
           })}
         </nav>
+        <div className="shrink-0">
+          <AuthButton />
+        </div>
       </div>
     </header>
   );
