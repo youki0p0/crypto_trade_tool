@@ -12,6 +12,9 @@ build/
 __pycache__/
 *.pyc
 
+# Jen (orchestrator runtime state / logs)
+.jen/
+
 # Env / secrets
 .env
 .env.*
