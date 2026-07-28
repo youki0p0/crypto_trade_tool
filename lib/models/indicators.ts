@@ -98,3 +98,33 @@ export function roc(values: number[], period: number): (number | null)[] {
   }
   return out;
 }
+
+/**
+ * ATR (Average True Range, Wilder). 高値/安値/終値の配列から算出。
+ * ボラティリティ（1本あたりの平均的な値幅）の指標。ATRベースのサイジング/損切りに使う。
+ */
+export function atr(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 14
+): (number | null)[] {
+  const n = closes.length;
+  const out: (number | null)[] = new Array(n).fill(null);
+  if (n <= period) return out;
+  const tr: number[] = new Array(n);
+  tr[0] = highs[0] - lows[0];
+  for (let i = 1; i < n; i++) {
+    const pc = closes[i - 1];
+    tr[i] = Math.max(highs[i] - lows[i], Math.abs(highs[i] - pc), Math.abs(lows[i] - pc));
+  }
+  let sum = 0;
+  for (let i = 1; i <= period; i++) sum += tr[i];
+  let prev = sum / period;
+  out[period] = prev;
+  for (let i = period + 1; i < n; i++) {
+    prev = (prev * (period - 1) + tr[i]) / period;
+    out[i] = prev;
+  }
+  return out;
+}

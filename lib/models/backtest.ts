@@ -4,6 +4,7 @@
  */
 import type { Candle, ModelDef } from "./types";
 import { computePnL } from "@/lib/trade/pnl";
+import { atr } from "./indicators";
 
 export interface BacktestTrade {
   entryTime: number;
@@ -113,13 +114,9 @@ function finalize(
   };
 }
 
-/** 設計上のリスクリワード（利確幅/損切り幅）。両方設定されている単一戦略のみ */
+/** 設計上のリスクリワード = 利確R倍率（利確幅 ÷ 損切り幅）。固定利確が無ければ null */
 function plannedRiskReward(model: ModelDef): number | null {
-  const { takeProfitPct, stopLossPct } = model.params;
-  if (takeProfitPct != null && stopLossPct != null && stopLossPct > 0) {
-    return takeProfitPct / stopLossPct;
-  }
-  return null;
+  return model.params.takeProfitR;
 }
 
 export function runBacktest(
@@ -131,36 +128,53 @@ export function runBacktest(
 
   const ind = model.prepare(candles);
   const decide = model.decide!;
-  const { leverage, positionPct, stopLossPct, takeProfitPct, allowShort } = model.params;
+  const { riskPerTrade, atrStopMult, takeProfitR, maxLeverage, allowShort } = model.params;
+
+  // ATR(14) を一括計算。ボラに応じたストップ幅・枚数の逆算に使う
+  const atrArr = atr(
+    candles.map((c) => c.high),
+    candles.map((c) => c.low),
+    candles.map((c) => c.close),
+    14
+  );
 
   let equity = initialCapital;
   let pos: OpenPos | null = null;
   const trades: BacktestTrade[] = [];
   const curve: EquityPoint[] = [];
 
-  // 純粋な補助関数（クロージャで pos を破壊的変更しない → TS の制御フロー解析が安定）
-  const makePos = (side: "long" | "short", price: number, time: number): OpenPos => ({
-    side,
-    entry: price,
-    entryTime: time,
-    quantity: price > 0 ? (positionPct * equity * leverage) / price : 0,
-    stopPrice:
-      stopLossPct == null
-        ? null
-        : side === "long"
-          ? price * (1 - stopLossPct)
-          : price * (1 + stopLossPct),
-    tpPrice:
-      takeProfitPct == null
-        ? null
-        : side === "long"
-          ? price * (1 + takeProfitPct)
-          : price * (1 - takeProfitPct),
-  });
+  /**
+   * ATRベースのポジション生成。
+   * ストップ幅 = atrStopMult × ATR、枚数 = equity × riskPerTrade / ストップ幅。
+   * これで「1トレードの損失額 ≈ equity × riskPerTrade」に固定され、ボラが高い週は枚数が自動で縮む。
+   * 実効レバレッジ(枚数×価格/equity)は maxLeverage でキャップ。ATR未確定なら建てない(null)。
+   */
+  const makePos = (side: "long" | "short", price: number, time: number, i: number): OpenPos | null => {
+    const a = atrArr[i];
+    if (a == null || a <= 0 || price <= 0) return null;
+    const stopDist = atrStopMult * a;
+    if (stopDist <= 0) return null;
+    let quantity = (equity * riskPerTrade) / stopDist;
+    const maxQty = (maxLeverage * equity) / price; // 実効レバ上限
+    if (quantity > maxQty) quantity = maxQty;
+    return {
+      side,
+      entry: price,
+      entryTime: time,
+      quantity,
+      stopPrice: side === "long" ? price - stopDist : price + stopDist,
+      tpPrice:
+        takeProfitR == null
+          ? null
+          : side === "long"
+            ? price + takeProfitR * stopDist
+            : price - takeProfitR * stopDist,
+    };
+  };
 
   const realize = (p: OpenPos, price: number, time: number, reason: BacktestTrade["reason"]) => {
     const pnl = computePnL(
-      { side: p.side, entryPrice: p.entry, quantity: p.quantity, leverage },
+      { side: p.side, entryPrice: p.entry, quantity: p.quantity, leverage: 1 },
       price
     );
     equity += pnl;
@@ -204,17 +218,17 @@ export function runBacktest(
       pos = null;
     } else if (action === "enter_long") {
       if (pos && pos.side === "short") { realize(pos, c.close, c.time, "signal"); pos = null; }
-      if (!pos) pos = makePos("long", c.close, c.time);
+      if (!pos) pos = makePos("long", c.close, c.time, i);
     } else if (action === "enter_short" && allowShort) {
       if (pos && pos.side === "long") { realize(pos, c.close, c.time, "signal"); pos = null; }
-      if (!pos) pos = makePos("short", c.close, c.time);
+      if (!pos) pos = makePos("short", c.close, c.time, i);
     }
 
     // 3) 時価評価してエクイティ曲線に記録
     let markEquity = equity;
     if (pos) {
       markEquity += computePnL(
-        { side: pos.side, entryPrice: pos.entry, quantity: pos.quantity, leverage },
+        { side: pos.side, entryPrice: pos.entry, quantity: pos.quantity, leverage: 1 },
         c.close
       );
     }
@@ -237,7 +251,7 @@ export function runBacktest(
  */
 function runDca(model: ModelDef, candles: Candle[], initialCapital: number): BacktestResult {
   const everyN = model.dcaEveryN ?? 7;
-  const spendPerBuy = initialCapital * model.params.positionPct;
+  const spendPerBuy = initialCapital * (model.params.dcaSpendPct ?? 0.1);
 
   let cash = initialCapital;
   let qty = 0;

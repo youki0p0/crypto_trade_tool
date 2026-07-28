@@ -21,16 +21,18 @@ export const RISK_LABEL: Record<RiskTier, string> = {
 export type Action = "enter_long" | "enter_short" | "exit" | "hold";
 
 export interface ModelParams {
-  /** レバレッジ倍率 */
-  leverage: number;
-  /** 1トレードで投入する証拠金の割合（現在 equity に対する 0..1） */
-  positionPct: number;
-  /** 損切り幅（エントリー価格に対する変動率 0..1）。null なら損切りなし */
-  stopLossPct: number | null;
-  /** 利確幅（同上）。null なら利確なし */
-  takeProfitPct: number | null;
+  /** 1トレードで許容する損失（現在 equity に対する割合 0..1）。ATRストップ幅から枚数を逆算 */
+  riskPerTrade: number;
+  /** ストップ幅 = atrStopMult × ATR(14)。ボラに応じて損切り幅と枚数が伸縮する */
+  atrStopMult: number;
+  /** 利確をリスク(R = ストップ幅)の何倍に置くか。null なら固定利確なし */
+  takeProfitR: number | null;
+  /** 実効レバレッジの上限。枚数をこの倍率でキャップ（口座過大露出を防ぐ） */
+  maxLeverage: number;
   /** ショートを許可するか */
   allowShort: boolean;
+  /** DCA専用: 1回の積立で使う初期資金の割合 */
+  dcaSpendPct?: number;
 }
 
 export type IndicatorMap = Record<string, (number | null)[]>;
