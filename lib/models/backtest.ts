@@ -125,6 +125,7 @@ export function runBacktest(
   initialCapital = 10000
 ): BacktestResult {
   if (model.kind === "dca") return runDca(model, candles, initialCapital);
+  if (model.kind === "ensemble") return runEnsemble(model, candles, initialCapital);
 
   const ind = model.prepare(candles);
   const decide = model.decide!;
@@ -244,6 +245,36 @@ export function runBacktest(
   }
 
   return finalize(model.id, initialCapital, equity, curve, trades, candles, plannedRiskReward(model));
+}
+
+/**
+ * 合成(ensemble): 資金を weight の比率でスリーブに分割し、各サブ戦略を独立に回して合算する。
+ * 各スリーブは自分の資金の中でサイジングするため、全体の実効レバは各戦略の上限の加重和を超えない。
+ */
+function runEnsemble(model: ModelDef, candles: Candle[], initialCapital: number): BacktestResult {
+  const comps = model.components ?? [];
+  const totalWeight = comps.reduce((s, c) => s + c.weight, 0);
+  if (comps.length === 0 || totalWeight <= 0) {
+    const curve = candles.map((c) => ({ time: c.time, equity: initialCapital }));
+    return finalize(model.id, initialCapital, initialCapital, curve, [], candles, null);
+  }
+
+  const sleeves = comps.map((c) =>
+    runBacktest(c.model, candles, initialCapital * (c.weight / totalWeight))
+  );
+
+  // 時価評価カーブはスリーブの単純合算（同じ足の並びなのでインデックスで足せる）
+  const curve: EquityPoint[] = candles.map((c, i) => ({
+    time: c.time,
+    equity: sleeves.reduce((s, r) => s + (r.equityCurve[i]?.equity ?? 0), 0),
+  }));
+
+  const finalEquity = sleeves.reduce((s, r) => s + r.finalEquity, 0);
+  // 全スリーブのトレードを決済時刻順にまとめる（勝率・期待値は合成全体として集計される）
+  const trades = sleeves.flatMap((r) => r.trades).sort((a, b) => a.exitTime - b.exitTime);
+
+  // 合成は戦略ごとに利確設計が異なるため、単一の設計R:Rは持たない
+  return finalize(model.id, initialCapital, finalEquity, curve, trades, candles, null);
 }
 
 /**

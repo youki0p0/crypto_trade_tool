@@ -346,6 +346,24 @@ export function ModelsClient() {
                 <Row icon={<TrendingUp className="h-3.5 w-3.5" />} label="手法" text={m.method} />
                 <Row icon={<ShieldCheck className="h-3.5 w-3.5" />} label="リスクヘッジ" text={m.hedge} />
                 <Row icon={<AlertTriangle className="h-3.5 w-3.5" />} label="リターン" text={m.expectedReturn} />
+                {m.kind === "ensemble" && m.components && (
+                  <div className="mt-1 space-y-1 rounded-md bg-muted/50 p-2">
+                    <div className="text-xs font-medium text-muted-foreground">資金配分と役割</div>
+                    {m.components.map((c) => (
+                      <div key={c.model.id} className="flex items-start gap-2 text-xs">
+                        <span
+                          className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: MODEL_COLORS[c.model.id] }}
+                        />
+                        <span className="shrink-0 font-medium tabular-nums">
+                          {Math.round(c.weight * 100)}%
+                        </span>
+                        <span className="shrink-0">{c.model.name}</span>
+                        <span className="text-muted-foreground">— {c.role}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {r && (
                   <div className="mt-2 flex gap-4 border-t pt-2 text-xs">
                     <span>

@@ -3,7 +3,7 @@
  *
  * ⚠️ Human Gate: ANTHROPIC_API_KEY（外部有料・secret）が必要。未設定なら isConfigured()=false。
  * 決定論的なバックテスト（lib/models/backtest）とは別レイヤーで、最新スナップショットに対し
- * 各ペルソナがどう判断するかを自然言語で返す（コスト抑制のため1回の呼び出しで5モデル分）。
+ * 各ペルソナがどう判断するかを自然言語で返す（コスト抑制のため1回の呼び出しで全モデル分）。
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { MODELS } from "./strategies";
@@ -95,15 +95,17 @@ const SYSTEM = `あなたは暗号通貨のマーケット状況を中立的に�
 - rationale は1〜2文、根拠は与えられた指標に基づく。
 これは投資助言ではなく、教育目的のシミュレーション解説です。断定を避け、リスクに触れてください。`;
 
-/** 5モデル全ペルソナの見立てを1回のClaude呼び出しで取得 */
+/** 全ペルソナ（合成モデルを除く個別戦略）の見立てを1回のClaude呼び出しで取得 */
 export async function getModelAdvice(snap: MarketSnapshot): Promise<ModelAdvice[]> {
   if (!isConfigured()) throw new Error("ANTHROPIC_API_KEY が未設定です");
 
   const client = new Anthropic();
 
-  const personas = MODELS.map(
-    (m) => `- id:${m.id} / ${m.name}（${m.tagline}）手法:${m.method} リスク:${m.risk}`
-  ).join("\n");
+  // 合成(ensemble)はサブ戦略の集合体で単独の見立てを持たないため、ペルソナからは除く
+  const personaModels = MODELS.filter((m) => m.kind !== "ensemble");
+  const personas = personaModels
+    .map((m) => `- id:${m.id} / ${m.name}（${m.tagline}）手法:${m.method} リスク:${m.risk}`)
+    .join("\n");
 
   const fmt = (n: number | null, d = 2) => (n == null ? "N/A" : n.toFixed(d));
   const prompt = `# 市場スナップショット
@@ -115,7 +117,7 @@ EMA短期(10): ${fmt(snap.emaFast)} / EMA長期(30): ${fmt(snap.emaSlow)}（短�
 直近20本の高値: ${fmt(snap.high20)} / 安値: ${fmt(snap.low20)}
 ROC(3): ${fmt(snap.roc3)}%（短期モメンタム）
 
-# ペルソナ（この5つそれぞれについて見立てを返す。modelId は必ず id を使う）
+# ペルソナ（この${personaModels.length}つそれぞれについて見立てを返す。modelId は必ず id を使う）
 ${personas}
 
 各ペルソナの signal / confidence / rationale を reads 配列で返してください。`;

@@ -1,6 +1,6 @@
 /**
  * 合議エンジン（純粋関数・キー不要）。アドバイザーの「背骨」。
- * 5モデルの最新バーでのシグナルを、レジームに応じた重みで合議し、
+ * 各モデルの最新バーでのシグナルを、レジームに応じた重みで合議し、
  * ネットスタンス・一致度・モデル別内訳を返す。予測ではなく「エッジの多数決」。
  */
 import type { Candle, IndicatorMap } from "@/lib/models/types";
@@ -35,12 +35,18 @@ export interface ConsensusResult {
  * transition/unknown は全モデル×0.5の縮退モード。
  */
 const REGIME_WEIGHTS: Record<Regime, Record<string, number>> = {
-  strong_up:   { dca_guardian: 1.0,  range_sniper: 0.7,  trend_rider: 1.3, breakout_hunter: 1.3,  momentum_blitz: 1.15 },
-  strong_down: { dca_guardian: 0.7,  range_sniper: 0.85, trend_rider: 1.3, breakout_hunter: 1.3,  momentum_blitz: 1.0 },
-  range:       { dca_guardian: 1.15, range_sniper: 1.3,  trend_rider: 0.7, breakout_hunter: 0.7,  momentum_blitz: 0.7 },
-  transition:  { dca_guardian: 0.5,  range_sniper: 0.5,  trend_rider: 0.5, breakout_hunter: 0.5,  momentum_blitz: 0.5 },
-  unknown:     { dca_guardian: 0.5,  range_sniper: 0.5,  trend_rider: 0.5, breakout_hunter: 0.5,  momentum_blitz: 0.5 },
+  strong_up:   { dca_guardian: 1.0,  range_sniper: 0.7,  trend_rider: 1.3, breakout_hunter: 1.3,  momentum_blitz: 1.15, breakout_coil: 1.3 },
+  strong_down: { dca_guardian: 0.7,  range_sniper: 0.85, trend_rider: 1.3, breakout_hunter: 1.3,  momentum_blitz: 1.0,  breakout_coil: 1.3 },
+  range:       { dca_guardian: 1.15, range_sniper: 1.3,  trend_rider: 0.7, breakout_hunter: 0.7,  momentum_blitz: 0.7,  breakout_coil: 0.7 },
+  transition:  { dca_guardian: 0.5,  range_sniper: 0.5,  trend_rider: 0.5, breakout_hunter: 0.5,  momentum_blitz: 0.5,  breakout_coil: 0.5 },
+  unknown:     { dca_guardian: 0.5,  range_sniper: 0.5,  trend_rider: 0.5, breakout_hunter: 0.5,  momentum_blitz: 0.5,  breakout_coil: 0.5 },
 };
+
+/**
+ * 合議に参加するモデル。合成(ensemble)はサブ戦略の集合体で単独のシグナルを持たないため、
+ * 二重計上を避けて投票からは除外する（構成要素は個別モデルとして既に投票している）。
+ */
+const VOTING_MODELS = MODELS.filter((m) => m.kind !== "ensemble");
 
 /** そのモデルがそのレジームで「稼働」するか（重み<0.75なら縮小=非主役だが投票は残す） */
 function isActive(modelId: string, regime: Regime): boolean {
@@ -53,7 +59,7 @@ function isActive(modelId: string, regime: Regime): boolean {
 function modelVote(candles: Candle[]): Map<string, Vote> {
   const i = candles.length - 1;
   const out = new Map<string, Vote>();
-  for (const m of MODELS) {
+  for (const m of VOTING_MODELS) {
     if (m.kind === "dca") {
       // DCAは常に「積立＝弱いロング」
       out.set(m.id, "long");
@@ -71,7 +77,7 @@ export function computeConsensus(candles: Candle[]): ConsensusResult {
   const regime = regimeState.regime;
   const votes = modelVote(candles);
 
-  const modelVotes: ModelVote[] = MODELS.map((m) => {
+  const modelVotes: ModelVote[] = VOTING_MODELS.map((m) => {
     const weight = REGIME_WEIGHTS[regime][m.id] ?? 0.5;
     return {
       modelId: m.id,

@@ -69,7 +69,77 @@ describe("plannedRR = takeProfitR", () => {
   });
 });
 
-describe("MODELS — 5モデルが動く", () => {
+describe("Breakout-Coil — スクイーズ・ゲート", () => {
+  it("収縮が一度も起きない相場では新規建てしない（ゲートが閉じ続ける）", () => {
+    // 値幅が単調拡大＝収縮なし。ゲートが開かないので何があっても建てない
+    const expanding: Candle[] = Array.from({ length: 400 }, (_, i) => {
+      const w = 0.2 + i * 0.05;
+      const cl = 100 + (i % 2 ? 0.1 : -0.1);
+      return candle(i, cl, cl + w, cl - w);
+    });
+    const coil = MODELS.find((m) => m.id === "breakout_coil")!;
+    expect(runBacktest(coil, expanding, 10000).numTrades).toBe(0);
+  });
+
+  it("取引数はゲート無しのBreakout以下になる（選別なので増えることはない）", () => {
+    // 収縮→拡大を繰り返す合成データ
+    const mixed: Candle[] = Array.from({ length: 400 }, (_, i) => {
+      const cl = 100 + i * 0.3 + Math.sin(i / 7) * 3;
+      const w = i % 120 < 60 ? 0.4 : 4; // 前半=収縮, 後半=拡大
+      return candle(i, cl, cl + w, cl - w);
+    });
+    const coil = MODELS.find((m) => m.id === "breakout_coil")!;
+    const hunter = MODELS.find((m) => m.id === "breakout_hunter")!;
+    expect(runBacktest(coil, mixed, 10000).numTrades).toBeLessThanOrEqual(
+      runBacktest(hunter, mixed, 10000).numTrades
+    );
+  });
+});
+
+describe("Coil-Trinity — 合成(ensemble)", () => {
+  const up: Candle[] = Array.from({ length: 300 }, (_, i) => {
+    const base = 100 + i * 0.8 + Math.sin(i / 9) * 4;
+    const w = i % 100 < 50 ? 0.5 : 3;
+    return candle(i, base, base + w, base - w);
+  });
+
+  it("資金はスリーブに分割され、合成エクイティは各スリーブの合算になる", () => {
+    const tri = MODELS.find((m) => m.id === "coil_trinity")!;
+    const r = runBacktest(tri, up, 10000);
+    const comps = tri.components!;
+    const totalW = comps.reduce((s, c) => s + c.weight, 0);
+    const sleeveSum = comps.reduce(
+      (s, c) => s + runBacktest(c.model, up, 10000 * (c.weight / totalW)).finalEquity,
+      0
+    );
+    expect(r.finalEquity).toBeCloseTo(sleeveSum, 6);
+    expect(r.equityCurve.length).toBe(up.length);
+    // 開始時の合成エクイティは元本と一致（スリーブ合計＝初期資金）
+    expect(r.equityCurve[0].equity).toBeCloseTo(10000, 4);
+  });
+
+  it("構成は3戦略・重み合計1・合成の設計R:Rはnull", () => {
+    const tri = MODELS.find((m) => m.id === "coil_trinity")!;
+    expect(tri.kind).toBe("ensemble");
+    expect(tri.components).toHaveLength(3);
+    expect(tri.components!.reduce((s, c) => s + c.weight, 0)).toBeCloseTo(1, 6);
+    // 主軸2つ（選別ブレイク・モメンタム）が過半、トレンドは分散要員で最小
+    const byId = Object.fromEntries(tri.components!.map((c) => [c.model.id, c.weight]));
+    expect(byId["breakout_coil"] + byId["momentum_blitz"]).toBeGreaterThan(0.5);
+    expect(byId["trend_rider"]).toBeLessThan(byId["breakout_coil"]);
+    expect(runBacktest(tri, up, 10000).plannedRR).toBeNull();
+  });
+
+  it("トレードは全スリーブ分が決済時刻順に集約される", () => {
+    const tri = MODELS.find((m) => m.id === "coil_trinity")!;
+    const r = runBacktest(tri, up, 10000);
+    for (let i = 1; i < r.trades.length; i++) {
+      expect(r.trades[i].exitTime).toBeGreaterThanOrEqual(r.trades[i - 1].exitTime);
+    }
+  });
+});
+
+describe("MODELS — 全モデルが動く", () => {
   const up: Candle[] = Array.from({ length: 120 }, (_, i) => {
     const base = 100 + i * 2;
     return candle(i * 86400000, base, base * 1.01, base * 0.99);

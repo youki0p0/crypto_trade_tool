@@ -37,6 +37,15 @@ export interface ModelParams {
 
 export type IndicatorMap = Record<string, (number | null)[]>;
 
+/** 合成モデル(ensemble)の構成要素。資金を weight の比率で各サブ戦略に配分する */
+export interface EnsembleComponent {
+  model: ModelDef;
+  /** 資金配分比率（合計1でなくてもよい。内部で正規化する） */
+  weight: number;
+  /** この戦略に担わせる役割（UI表示・ドキュメント用） */
+  role: string;
+}
+
 export interface ModelDef {
   id: string;
   name: string;
@@ -48,8 +57,10 @@ export interface ModelDef {
   /** 期待リターンの大きさ（定性） */
   expectedReturn: string;
   risk: RiskTier;
-  kind: "single" | "dca";
+  kind: "single" | "dca" | "ensemble";
   params: ModelParams;
+  /** kind==="ensemble" のときのサブ戦略と資金配分 */
+  components?: EnsembleComponent[];
   /** バックテスト開始時に指標を一括計算 */
   prepare: (candles: Candle[]) => IndicatorMap;
   /** 各足での判断（single 用） */

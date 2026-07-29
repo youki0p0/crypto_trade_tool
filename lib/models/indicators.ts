@@ -100,6 +100,62 @@ export function roc(values: number[], period: number): (number | null)[] {
 }
 
 /**
+ * スクイーズ（ボラティリティ収縮）ゲート。
+ *
+ * 正規化ATR(ATR/終値)が直近 window 本の中で下位 pct 分位に入る足を「収縮＝バネが溜まった状態」とみなし、
+ * その後 lookback 本以内を「発火可能(armed)」として 1、それ以外を 0 で返す。
+ *
+ * 狙い: 相場は大きく動く前に収縮する傾向がある。収縮明けのブレイクだけを拾うことで
+ * 平常時のダマシを見送り、「本物のブレイク」の比率を上げる（＝取引を減らして質を上げる）。
+ * IndicatorMap に載せられるよう boolean ではなく 1/0 の数値で返す。
+ */
+export function squeezeArmed(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  opts: { atrPeriod?: number; window?: number; pct?: number; lookback?: number } = {}
+): (number | null)[] {
+  const { atrPeriod = 14, window = 168, pct = 0.3, lookback = 12 } = opts;
+  const n = closes.length;
+  const atrArr = atr(highs, lows, closes, atrPeriod);
+  // 正規化ATR（価格水準に依存しないボラ指標）
+  const norm: (number | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    const a = atrArr[i];
+    if (a != null && closes[i] > 0) norm[i] = a / closes[i];
+  }
+
+  // 各足で「直近 window 本の正規化ATR分布における自分の分位」を測り、下位 pct 未満なら収縮
+  const squeezed: boolean[] = new Array(n).fill(false);
+  for (let i = 0; i < n; i++) {
+    const cur = norm[i];
+    if (cur == null) continue;
+    let count = 0;
+    let below = 0;
+    for (let j = Math.max(0, i - window + 1); j <= i; j++) {
+      const v = norm[j];
+      if (v == null) continue;
+      count++;
+      if (v <= cur) below++;
+    }
+    // サンプルが少なすぎる区間は判定しない
+    if (count > 20 && below / count < pct) squeezed[i] = true;
+  }
+
+  // 収縮から lookback 本以内なら発火可能
+  const out: (number | null)[] = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let j = Math.max(0, i - lookback); j <= i; j++) {
+      if (squeezed[j]) {
+        out[i] = 1;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * ATR (Average True Range, Wilder). 高値/安値/終値の配列から算出。
  * ボラティリティ（1本あたりの平均的な値幅）の指標。ATRベースのサイジング/損切りに使う。
  */
