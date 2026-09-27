@@ -5,7 +5,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 
-const MODEL_ID = process.env.ANTHROPIC_MODEL || "claude-opus-4-8";
+const MODEL_ID = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
 
 const SYMBOL_NAME: Record<string, string> = {
   BTCUSDT: "Bitcoin (BTC)",

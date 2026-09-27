@@ -10,7 +10,7 @@ import { MODELS } from "./strategies";
 import type { Candle } from "./types";
 import { sma, ema, rsi, rollingHigh, rollingLow, roc } from "./indicators";
 
-const MODEL_ID = process.env.ANTHROPIC_MODEL || "claude-opus-4-8";
+const MODEL_ID = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
 
 export function isConfigured(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);

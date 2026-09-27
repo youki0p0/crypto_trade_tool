@@ -7,7 +7,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ConsensusResult } from "./consensus";
 import { REGIME_LABEL } from "./regime";
 
-const MODEL_ID = process.env.ANTHROPIC_MODEL || "claude-opus-4-8";
+const MODEL_ID = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
 
 export type AdviceStance =
   | "strong_long"
