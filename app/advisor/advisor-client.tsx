@@ -149,7 +149,7 @@ function ConsensusPanel({ consensus, regime }: { consensus: ConsensusResult; reg
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle>合議シグナル（5モデルの多数決・決定論）</CardTitle>
+          <CardTitle>合議シグナル（{consensus.votes.length}モデルの多数決・決定論）</CardTitle>
           <Badge variant="outline">レジーム: {REGIME_LABEL[regime.regime]}</Badge>
         </div>
       </CardHeader>

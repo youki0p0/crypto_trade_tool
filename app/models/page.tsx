@@ -1,3 +1,4 @@
+import { MODELS } from "@/lib/models/strategies";
 import { ModelsClient } from "./models-client";
 
 export const metadata = { title: "AI戦略モデル比較 | Crypto Trade Sim" };
@@ -8,7 +9,7 @@ export default function ModelsPage() {
       <div className="space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">AI戦略モデル比較</h1>
         <p className="text-muted-foreground">
-          手法・リスクヘッジ・リターンの大きさが異なる5つの戦略モデルを、過去データでバックテストして
+          手法・リスクヘッジ・リターンの大きさが異なる{MODELS.length}つの戦略モデルを、過去データでバックテストして
           リターン／最大ドローダウン／勝率で比較します。守り（DCA）から攻め（高レバ・モメンタム）まで。
         </p>
       </div>
